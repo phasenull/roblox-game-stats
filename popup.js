@@ -80,9 +80,16 @@ function bars(points, open, color) {
 function renderRT(el, d) {
   const month = d.verified?.month ?? d.mine?.month ?? d.est?.mid;
   const days = d.verified?.days ?? d.mine?.days ?? d.est?.days?.robux;
+  // Locked with a signed-in taste means the free daily looks are used up.
+  const why =
+    d.shows === 'private'
+      ? 'The developer keeps it private.'
+      : d.taste && !d.taste.signin
+        ? 'No free RoTerminal looks left today.'
+        : 'Sign in to roterminal.co in Chrome to see it.';
   const robux =
     month == null
-      ? `<p class="muted">${d.shows === 'private' ? 'The developer keeps it private.' : 'Sign in to roterminal.co in Chrome to see it.'}</p>`
+      ? `<p class="muted">${why}</p>`
       : `<div class="big">R$ ${compact(month)} <small>$${compact(month * d.devex)}</small></div>
          ${d.est?.rank ? `<span class="pill">#${esc(d.est.rank)} Top Earning</span>` : ''}
          ${days?.length ? bars(days, d.est?.days?.open, '#e0b400') : ''}`;

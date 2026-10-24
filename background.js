@@ -24,13 +24,21 @@ async function creatorExchange({ uid, name }) {
   return { game, exact: String(game?.universeId) === uid, searchUrl: `https://creatorexchange.io/search?search=${encodeURIComponent(q)}` };
 }
 
-// RoTerminal sits behind a JS proof-of-work check and hides earnings unless signed in.
-// Try a plain fetch with the user's cookies; if blocked or locked, let a background tab pass the check and fetch from there.
+// RoTerminal sits behind a JS proof-of-work check, and earnings start out locked even when signed in.
+// Free accounts get a few "looks" a day: when taste.ready, ?look=1 spends one and unlocks them, as the site does
+// once the earnings section scrolls into view. Pro accounts get them unlocked straight away.
+async function earnings(get, id) {
+  const d = await get(`earnings/${id}`);
+  return d.shows === 'locked' && d.taste?.ready ? get(`earnings/${id}?look=1`) : d;
+}
+
+// Try a plain fetch with the user's cookies; if blocked, or locked because RoTerminal didn't see the sign-in,
+// let a background tab pass the check and fetch from there.
 async function roTerminal({ uid }) {
   const get = (path) => json(`https://roterminal.co/api/${path}`, { credentials: 'include' });
   try {
-    const [d, playtime, game] = await Promise.all([get(`earnings/${uid}`), get(`game/${uid}/playtime`), get(`game/${uid}`)]);
-    if (d.shows !== 'locked') return { ...d, playtime, history: game.history };
+    const [d, playtime, game] = await Promise.all([earnings(get, uid), get(`game/${uid}/playtime`), get(`game/${uid}`)]);
+    if (d.shows !== 'locked' || !d.taste?.signin) return { ...d, playtime, history: game.history };
   } catch {}
   return roTerminalViaTab(uid);
 }
@@ -47,7 +55,12 @@ async function roTerminalViaTab(uid) {
           func: async (id) => {
             try {
               const get = async (path) => (await fetch(`/api/${path}`)).json();
-              const [d, playtime, game] = await Promise.all([get(`earnings/${id}`), get(`game/${id}/playtime`), get(`game/${id}`)]);
+              // Same as earnings() above; this function runs in the tab, so it can't call it.
+              const earnings = async () => {
+                const d = await get(`earnings/${id}`);
+                return d.shows === 'locked' && d.taste?.ready ? get(`earnings/${id}?look=1`) : d;
+              };
+              const [d, playtime, game] = await Promise.all([earnings(), get(`game/${id}/playtime`), get(`game/${id}`)]);
               return { ...d, playtime, history: game.history };
             } catch { return null; }
           },
