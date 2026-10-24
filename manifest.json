@@ -1,19 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Roblox Game Stats",
-  "version": "1.0.0",
-  "description": "Adds a Stats button to Roblox game pages with data from CreatorExchange, RoTerminal and RoTrends.",
-  "permissions": ["scripting"],
+  "version": "2.0.0",
+  "description": "Shows CreatorExchange, RoTerminal and RoTrends stats for the Roblox game in the current tab.",
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": [
+    "https://apis.roblox.com/*",
+    "https://games.roblox.com/*",
     "https://creatorexchange.io/*",
     "https://roterminal.co/*",
     "https://www.rotrends.com/*"
   ],
   "background": { "service_worker": "background.js" },
-  "content_scripts": [
-    {
-      "matches": ["https://www.roblox.com/games/*", "https://www.roblox.com/*/games/*"],
-      "js": ["content.js"]
-    }
-  ]
+  "action": { "default_title": "Roblox Game Stats", "default_popup": "popup.html" }
 }

@@ -1,10 +1,19 @@
-// Fetches stats from the three sites. Content scripts can't fetch cross-origin in MV3, so it happens here.
+// Fetches game info and stats for the popup. Runs here so the RoTerminal background tab is still closed if the popup closes early.
 
 const json = async (url, opts) => {
   const r = await fetch(url, opts);
   if (!r.ok) throw new Error(`${r.status} ${url}`);
   return r.json(); // throws on RoTerminal's HTML bot-check page
 };
+
+// Roblox: the tab URL only has the place ID. The stats sites key on the universe ID, and CreatorExchange searches by name.
+async function roblox({ placeId }) {
+  const { universeId } = await json(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+  if (!universeId) throw new Error('Game not found');
+  const { data: [game] = [] } = await json(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+  // sourceName is the untranslated name when the API localizes it.
+  return { uid: String(universeId), name: game?.sourceName || game?.name || '' };
+}
 
 // CreatorExchange: same request its /search page makes; we read the result card, never open the game page.
 async function creatorExchange({ uid, name }) {
@@ -68,9 +77,10 @@ async function roTrends({ uid }) {
   return { url, placements: tab('Charts'), globalRank: tab('Global Rank'), share: tab('Platform Share'), charts };
 }
 
-const sources = { creatorExchange, roTerminal, roTrends };
+const sources = { roblox, creatorExchange, roTerminal, roTrends };
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (!Object.hasOwn(sources, msg.source)) return false;
   sources[msg.source](msg)
     .then((data) => reply({ data }))
     .catch((e) => reply({ error: String(e.message ?? e) }));

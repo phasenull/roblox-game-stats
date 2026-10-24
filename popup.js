@@ -1,53 +1,49 @@
-// Adds a "Stats" button to a Roblox game page and a side panel with CreatorExchange, RoTerminal and RoTrends data.
+// Popup for the toolbar button. Reads only the active tab's URL (activeTab), never the Roblox page itself.
 
-const meta = document.querySelector('#game-detail-meta-data');
-const anchor = document.querySelector('.game-buttons-container');
+// /games/<placeId>/..., optionally behind a locale segment like /de/ or /pt-br/.
+const PLACE = /^https:\/\/(?:www\.)?roblox\.com\/(?:[a-z]{2}(?:-[a-z0-9]+)?\/)?games\/(\d+)/i;
 
-function init() {
-  const uid = meta.dataset.universeId;
-  // data-source-text holds the untranslated name; the visible one may be localized.
-  const name = document.querySelector('.game-name')?.dataset.sourceText || meta.dataset.placeName || '';
-
-  const host = document.createElement('div');
-  const root = host.attachShadow({ mode: 'open' });
-  root.innerHTML = `<style>${CSS}</style>
-    <button class="open">📊 Stats</button>
-    <aside hidden>
-      <header><b></b><button class="close" aria-label="Close">✕</button></header>
-      <section id="ce"><h2>CreatorExchange</h2><div class="body">Loading…</div></section>
-      <section id="rt"><h2>RoTerminal</h2><div class="body">Loading…</div></section>
-      <section id="rtr"><h2>RoTrends</h2><div class="body">Loading…</div></section>
-      <section id="pt"><h2>Playtime (RoTerminal)</h2><div class="body">Loading…</div></section>
-      <section id="ccu"><h2>CCU (RoTerminal)</h2><div class="body">Loading…</div></section>
-    </aside>`;
-  anchor.after(host);
-  root.querySelector('header b').textContent = name;
-
-  const panel = root.querySelector('aside');
-  let loaded = false;
-  root.querySelector('.open').onclick = () => {
-    panel.hidden = !panel.hidden;
-    if (loaded) return;
-    loaded = true;
-    load(root, ['ce'], 'creatorExchange', { uid, name }, ([el], d) => renderCE(el, d));
-    load(root, ['rt', 'pt', 'ccu'], 'roTerminal', { uid }, ([rt, pt, ccu], d) => {
-      renderRT(rt, d);
-      renderPlaytime(pt, d.playtime);
-      renderCCU(ccu, d.history);
-    });
-    load(root, ['rtr'], 'roTrends', { uid }, ([el], d) => renderRTR(el, d));
-  };
-  root.querySelector('.close').onclick = () => (panel.hidden = true);
-}
+const ask = async (source, args) => {
+  const res = await chrome.runtime.sendMessage({ source, ...args });
+  if (!res || res.error) throw new Error(res?.error ?? 'No response');
+  return res.data;
+};
 
 // One request can fill several sections (RoTerminal feeds three).
-function load(root, ids, source, args, render) {
-  const bodies = ids.map((id) => root.querySelector(`#${id} .body`));
-  chrome.runtime.sendMessage({ source, ...args }, (res) => {
-    const error = !res || res.error ? `Error: ${res?.error ?? chrome.runtime.lastError?.message}` : null;
-    bodies.forEach((b) => (error ? (b.textContent = error) : b.replaceChildren()));
-    if (!error) render(bodies, res.data);
+function load(ids, source, args, render) {
+  const bodies = ids.map((id) => document.querySelector(`#${id} .body`));
+  ask(source, args).then(
+    (d) => {
+      bodies.forEach((b) => b.replaceChildren());
+      render(bodies, d);
+    },
+    (e) => bodies.forEach((b) => (b.textContent = `Error: ${e.message}`)),
+  );
+}
+
+async function init() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const placeId = tab?.url?.match(PLACE)?.[1];
+  if (!placeId) return (document.querySelector('#idle').hidden = false);
+
+  const main = document.querySelector('main');
+  main.hidden = false;
+  let game;
+  try {
+    game = await ask('roblox', { placeId });
+  } catch (e) {
+    return (main.textContent = `Error: ${e.message}`);
+  }
+  const { uid, name } = game;
+  document.querySelector('header b').textContent = name;
+
+  load(['ce'], 'creatorExchange', { uid, name }, ([el], d) => renderCE(el, d));
+  load(['rt', 'pt', 'ccu'], 'roTerminal', { uid }, ([rt, pt, ccu], d) => {
+    renderRT(rt, d);
+    renderPlaytime(pt, d.playtime);
+    renderCCU(ccu, d.history);
   });
+  load(['rtr'], 'roTrends', { uid }, ([el], d) => renderRTR(el, d));
 }
 
 const compact = (n) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
@@ -88,7 +84,7 @@ function renderRT(el, d) {
     month == null
       ? `<p class="muted">${d.shows === 'private' ? 'The developer keeps it private.' : 'Sign in to roterminal.co in Chrome to see it.'}</p>`
       : `<div class="big">R$ ${compact(month)} <small>$${compact(month * d.devex)}</small></div>
-         ${d.est?.rank ? `<span class="pill">#${d.est.rank} Top Earning</span>` : ''}
+         ${d.est?.rank ? `<span class="pill">#${esc(d.est.rank)} Top Earning</span>` : ''}
          ${days?.length ? bars(days, d.est?.days?.open, '#e0b400') : ''}`;
   const p = d.play;
   const change = p?.was ? p.day / p.was - 1 : null;
@@ -151,7 +147,7 @@ function lineChart(el, all, { color, ranges, value, sub }) {
     <svg class="pt" viewBox="0 0 400 130" preserveAspectRatio="none"></svg>
     <div class="toggle">${ranges.map(([r], i) => `<button class="${i ? '' : 'on'}" data-i="${i}">${r}</button>`).join('')}</div>`;
   const svg = el.querySelector('svg');
-  const id = `g${color.slice(1)}`; // gradient ids share one shadow root
+  const id = `g${color.slice(1)}`; // gradient ids share one page
   const last = all.at(-1)[0];
   const show = ([t, v]) => {
     el.querySelector('.pt-v').textContent = value(v);
@@ -227,48 +223,5 @@ function renderRTR(el, d) {
   );
 }
 
-const CSS = `
-:host { all: initial; }
-* { box-sizing: border-box; font-family: "Builder Sans", system-ui, sans-serif; }
-.open { margin-top: 8px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #1e2433; color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; }
-.open:hover { background: #2a3245; }
-aside { position: fixed; top: 70px; right: 16px; bottom: 16px; width: min(440px, calc(100vw - 32px)); overflow-y: auto; z-index: 2147483647;
-  background: #111; color: #eee; border: 1px solid #333; border-radius: 16px; padding: 16px; box-shadow: 0 10px 40px #000a; font-size: 13px; }
-aside[hidden] { display: none; }
-header { display: flex; justify-content: space-between; align-items: center; font-size: 16px; margin-bottom: 8px; }
-.close { background: none; border: 0; color: #aaa; font-size: 18px; cursor: pointer; }
-section { border-top: 1px solid #2a2a2a; padding: 12px 0; }
-h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #888; }
-h3 { margin: 0 0 6px; font-size: 13px; font-weight: 400; color: #aaa; display: flex; justify-content: space-between; }
-a { color: #4c8dff; font-size: 12px; display: inline-block; margin-top: 8px; }
-small, .muted { color: #999; }
-.warn { color: #e0b400; margin: 0 0 6px; }
-.ce-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 15px; }
-.ce-head img { width: 44px; height: 44px; border-radius: 8px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.grid span { background: #1b2233; border-radius: 6px; padding: 6px; text-align: center; font-weight: 700; color: #7fa7ff; }
-.up { color: #3ccf7a; } .down { color: #ff5a5a; }
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.tile { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 14px; padding: 10px; }
-.big { font-size: 22px; font-weight: 700; } .big small { font-size: 13px; color: #ddd; }
-.pill { display: inline-block; background: #262626; border-radius: 999px; padding: 2px 8px; margin: 4px 0; font-size: 12px; }
-.best-v { font-size: 11px; font-weight: 700; margin-top: 6px; }
-.bars { display: flex; align-items: flex-end; gap: 2px; height: 60px; }
-.bars i { flex: 1; border-radius: 2px 2px 0 0; opacity: .75; min-height: 2px; }
-.bars i.best { opacity: 1; }
-.bars i.open { background: repeating-linear-gradient(135deg, #888 0 2px, transparent 2px 4px) !important; }
-.axis { display: flex; justify-content: space-between; color: #777; font-size: 10px; }
-.stats { display: flex; gap: 18px; margin-bottom: 8px; } .stats div { display: flex; flex-direction: column; } .stats b { font-size: 16px; }
-.toggle { display: inline-flex; background: #000; border-radius: 6px; padding: 2px; margin-bottom: 8px; }
-.toggle button { background: none; border: 0; color: #aaa; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
-.toggle button.on { background: #333; color: #fff; }
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.card { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 10px; padding: 8px; }
-.card[hidden] { display: none; }
-.card b { font-size: 17px; }
-.pt-head { display: flex; flex-direction: column; margin-bottom: 4px; }
-svg.pt { width: 100%; height: 130px; display: block; cursor: crosshair; touch-action: none; margin-bottom: 8px; }
-`;
-
-// Called last so the consts above (CSS etc.) are initialized.
-if (meta && anchor) init();
+// Called last so the consts above are initialized.
+init();
