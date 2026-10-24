@@ -3,7 +3,7 @@
   "name": "Roblox Game Stats",
   "version": "2.0.0",
   "description": "Shows CreatorExchange, RoTerminal and RoTrends stats for the Roblox game in the current tab.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab"],
   "host_permissions": [
     "https://apis.roblox.com/*",
     "https://games.roblox.com/*",

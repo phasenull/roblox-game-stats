@@ -27,7 +27,8 @@ To update after pulling new code, click the reload icon on the extension's card 
 ## Notes
 
 - **Monthly Robux** is only shown by RoTerminal to signed-in users. Sign in to roterminal.co in the same Chrome profile to see it; otherwise the tile asks you to sign in.
-- RoTerminal runs a browser check. If a direct request is blocked, the extension briefly opens RoTerminal in a background tab, reads the data there and closes the tab.
+- RoTerminal sometimes runs a browser check. The extension never opens RoTerminal itself; if the check blocks it, the popup links to the game on roterminal.co. Open it once, then reopen the popup.
+- Free RoTerminal accounts get a few earnings looks a day, and each popup open spends one, like opening the game on the site does.
 - RoTrends data is read from its server-rendered HTML, so a redesign of that site can break the RoTrends section.
 - Revenue and Robux figures are each site's own estimates, not real earnings, and the sites often disagree.
 - Data is fetched fresh every time you open the popup; nothing is cached or sent anywhere else.

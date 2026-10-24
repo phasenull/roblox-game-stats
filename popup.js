@@ -9,15 +9,20 @@ const ask = async (source, args) => {
   return res.data;
 };
 
-// One request can fill several sections (RoTerminal feeds three).
-function load(ids, source, args, render) {
+// One request can fill several sections (RoTerminal feeds three). link: [text, url] shown under an error.
+function load(ids, source, args, render, link) {
   const bodies = ids.map((id) => document.querySelector(`#${id} .body`));
   ask(source, args).then(
     (d) => {
       bodies.forEach((b) => b.replaceChildren());
       render(bodies, d);
     },
-    (e) => bodies.forEach((b) => (b.textContent = `Error: ${e.message}`)),
+    (e) => {
+      bodies.forEach((b) => (b.textContent = `Error: ${e.message}`));
+      if (!link) return;
+      const a = Object.assign(document.createElement('a'), { textContent: link[0], href: link[1], target: '_blank' });
+      bodies[0].append(document.createElement('br'), a);
+    },
   );
 }
 
@@ -38,11 +43,17 @@ async function init() {
   document.querySelector('header b').textContent = name;
 
   load(['ce'], 'creatorExchange', { uid, name }, ([el], d) => renderCE(el, d));
-  load(['rt', 'pt', 'ccu'], 'roTerminal', { uid }, ([rt, pt, ccu], d) => {
-    renderRT(rt, d);
-    renderPlaytime(pt, d.playtime);
-    renderCCU(ccu, d.history);
-  });
+  load(
+    ['rt', 'pt', 'ccu'],
+    'roTerminal',
+    { uid },
+    ([rt, pt, ccu], d) => {
+      renderRT(rt, d);
+      renderPlaytime(pt, d.playtime);
+      renderCCU(ccu, d.history);
+    },
+    ['Open RoTerminal, then reopen this popup', `https://roterminal.co/g/${uid}`],
+  );
   load(['rtr'], 'roTrends', { uid }, ([el], d) => renderRTR(el, d));
 }
 

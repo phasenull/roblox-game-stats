@@ -1,4 +1,4 @@
-// Fetches game info and stats for the popup. Runs here so the RoTerminal background tab is still closed if the popup closes early.
+// Fetches game info and stats for the popup.
 
 const json = async (url, opts) => {
   const r = await fetch(url, opts);
@@ -32,45 +32,15 @@ async function earnings(get, id) {
   return d.shows === 'locked' && d.taste?.ready ? get(`earnings/${id}?look=1`) : d;
 }
 
-// Try a plain fetch with the user's cookies; if blocked, or locked because RoTerminal didn't see the sign-in,
-// let a background tab pass the check and fetch from there.
+// Plain fetches with the user's cookies only. The extension never opens RoTerminal itself: if the browser check
+// blocks these, the popup links to the site so the user can pass the check by visiting it.
 async function roTerminal({ uid }) {
   const get = (path) => json(`https://roterminal.co/api/${path}`, { credentials: 'include' });
   try {
     const [d, playtime, game] = await Promise.all([earnings(get, uid), get(`game/${uid}/playtime`), get(`game/${uid}`)]);
-    if (d.shows !== 'locked' || !d.taste?.signin) return { ...d, playtime, history: game.history };
-  } catch {}
-  return roTerminalViaTab(uid);
-}
-
-async function roTerminalViaTab(uid) {
-  const tab = await chrome.tabs.create({ url: `https://roterminal.co/g/${uid}`, active: false });
-  try {
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const [res] = await chrome.scripting
-        .executeScript({
-          target: { tabId: tab.id },
-          args: [uid],
-          func: async (id) => {
-            try {
-              const get = async (path) => (await fetch(`/api/${path}`)).json();
-              // Same as earnings() above; this function runs in the tab, so it can't call it.
-              const earnings = async () => {
-                const d = await get(`earnings/${id}`);
-                return d.shows === 'locked' && d.taste?.ready ? get(`earnings/${id}?look=1`) : d;
-              };
-              const [d, playtime, game] = await Promise.all([earnings(), get(`game/${id}/playtime`), get(`game/${id}`)]);
-              return { ...d, playtime, history: game.history };
-            } catch { return null; }
-          },
-        })
-        .catch(() => [null]); // tab mid-reload after the check passes
-      if (res?.result) return res.result;
-    }
-    throw new Error('Could not get past the RoTerminal browser check');
-  } finally {
-    chrome.tabs.remove(tab.id).catch(() => {});
+    return { ...d, playtime, history: game.history };
+  } catch {
+    throw new Error("RoTerminal didn't answer, maybe because of its browser check");
   }
 }
 
